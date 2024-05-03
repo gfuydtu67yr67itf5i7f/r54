@@ -1,0 +1,143 @@
+import discord
+import random
+import asyncio
+from discord.ext import commands
+
+bot = commands.Bot(command_prefix='!')
+bank_balance = 0
+jail_members = {}
+
+@bot.command()
+async def work(ctx):
+    coins = random.randint(3000, 5000)
+    await update_balance(ctx.author, coins)
+    await ctx.send(f"You earned {coins} coins from work!")
+
+@bot.command()
+async def casino(ctx, amount: int):
+    if amount <= 0:
+        await ctx.send("Please enter a valid amount to bet!")
+        return
+    
+    outcome = random.choice(['win', 'lose'])
+    if outcome == 'win':
+        winnings = amount * 2
+        await update_balance(ctx.author, winnings)
+        await ctx.send(f"Congratulations! You won {winnings} coins!")
+    else:
+        await update_balance(ctx.author, -amount)
+        await ctx.send("Sorry, you lost all your money!")
+
+@bot.command()
+async def crime(ctx):
+    outcome = random.choices(['success', 'failure'], weights=[20, 80])[0]
+    if outcome == 'success':
+        earnings = random.randint(60000, 70000)
+        await update_balance(ctx.author, earnings)
+        await ctx.send(f"You successfully committed a crime and earned {earnings} coins!")
+    else:
+        await update_balance(ctx.author, -ctx.author.balance)
+        jail_members[ctx.author.id] = 7
+        await ctx.send("You got caught! You lost all your money and you're in jail for 7 days.")
+
+@bot.command()
+async def change(ctx):
+    # Placeholder for change command logic
+    pass
+
+@bot.command()
+async def jackpot(ctx, amount: int, num_winners: int):
+    if not ctx.author.guild_permissions.administrator:
+        await ctx.send("You must be an administrator to start a jackpot!")
+        return
+    
+    participants = await gather_participants(ctx, num_winners)
+    if not participants:
+        await ctx.send("Not enough participants to start the jackpot!")
+        return
+    
+    winners = random.sample(participants, k=num_winners)
+    winnings = amount // num_winners
+    for winner in winners:
+        await update_balance(winner, winnings)
+    
+    await ctx.send(f"Congratulations to the winners: {', '.join([winner.display_name for winner in winners])}! They each won {winnings} coins.")
+
+async def gather_participants(ctx, num_winners):
+    participants = [member for member in ctx.guild.members if member.balance > 0]
+    if len(participants) < num_winners:
+        return None
+    return participants
+
+@bot.command()
+async def jail(ctx, member: discord.Member):
+    if not ctx.author.guild_permissions.administrator:
+        await ctx.send("You must be an administrator to put someone in jail!")
+        return
+    
+    jail_members[member.id] = 7
+    await ctx.send(f"{member.display_name} has been put in jail for 7 days.")
+
+@bot.command()
+async def bal(ctx):
+    await ctx.send(f"Your balance is {ctx.author.balance} coins.")
+
+@bot.command()
+async def reset(ctx, member: discord.Member):
+    if not ctx.author.guild_permissions.administrator:
+        await ctx.send("You must be an administrator to reset someone's balance!")
+        return
+    
+    member.balance = 0
+    await ctx.send(f"{member.display_name}'s balance has been reset to 0.")
+
+@bot.command()
+async def reset_all(ctx):
+    if not ctx.author.guild.owner:
+        await ctx.send("You must be the server owner to reset everyone's balance!")
+        return
+    
+    for member in ctx.guild.members:
+        member.balance = 0
+    await ctx.send("All members' balances have been reset to 0.")
+
+@bot.command()
+async def here(ctx):
+    embed = discord.Embed(title="Available Commands", color=0x00ff00)
+    embed.add_field(name="!work", value="Earn coins from work", inline=False)
+    embed.add_field(name="!casino (amount)", value="Gamble your coins in a casino game", inline=False)
+    embed.add_field(name="!crime", value="Attempt to commit a crime and earn coins", inline=False)
+    embed.add_field(name="!jackpot (amount) (num_winners)", value="Start a jackpot for a chance to win coins", inline=False)
+    embed.add_field(name="!jail (member)", value="Put a member in jail", inline=False)
+    embed.add_field(name="!bal", value="Check your balance", inline=False)
+    embed.add_field(name="!reset (member)", value="Reset a member's balance (Admin only)", inline=False)
+    embed.add_field(name="!reset_all", value="Reset everyone's balance (Server owner only)", inline=False)
+    await ctx.send(embed=embed)
+
+@bot.command()
+async def bank(ctx, amount: int):
+    global bank_balance
+    bank_balance += amount
+    await ctx.send(f"{amount} coins deposited into the bank!")
+
+async def update_balance(member, amount):
+    member.balance += amount
+    await member.send(f"Your balance has been updated. Your current balance is {member.balance} coins.")
+
+@bot.event
+async def on_ready():
+    print(f'Logged in as {bot.user.name}')
+
+@bot.event
+async def on_message(message):
+    if message.author.id in jail_members:
+        await message.channel.send("You're in jail! You can't use any commands.")
+        return
+    await bot.process_commands(message)
+
+class MemberWithBalance(discord.Member):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.balance = 0
+
+bot.run('1235973935762374676')
